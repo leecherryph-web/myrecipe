@@ -1,0 +1,6 @@
+{
+  "name": "食譜筆記",
+  "description": "繁體中文食譜筆記 Web App，支援分類搜尋、食材清單、烹飪步驟、多組烹飪計時器、多格式匯出以及 Google Drive 雲端同步與離線備份。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
