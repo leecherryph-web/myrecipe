@@ -61,10 +61,11 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
   const [checkedIngredients, setCheckedIngredients] = useState<{ [id: string]: boolean }>({});
   const [completedSteps, setCompletedSteps] = useState<{ [id: string]: boolean }>({});
   const [copiedNotification, setCopiedNotification] = useState(false);
-  const [showImageLightbox, setShowImageLightbox] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
   const [isEditingPrivateNotes, setIsEditingPrivateNotes] = useState(false);
   const [privateNotesText, setPrivateNotesText] = useState(recipe.privateNotes || '');
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [uploadingStepIndex, setUploadingStepIndex] = useState<number | null>(null);
 
   const baseServings = recipe.servings || 1;
   const multiplier = currentServings / baseServings;
@@ -233,7 +234,14 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
               alt={recipe.title}
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-500 cursor-pointer"
-              onClick={() => setShowImageLightbox(true)}
+              onClick={() =>
+                setLightboxImage({
+                  url:
+                    recipe.coverImage ||
+                    'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=80',
+                  title: recipe.title,
+                })
+              }
             />
 
             {/* Badges on top */}
@@ -256,7 +264,14 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
 
             {/* Zoom / Lightbox button */}
             <button
-              onClick={() => setShowImageLightbox(true)}
+              onClick={() =>
+                setLightboxImage({
+                  url:
+                    recipe.coverImage ||
+                    'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=80',
+                  title: recipe.title,
+                })
+              }
               className="absolute top-4 right-4 p-2 rounded-full bg-stone-900/60 hover:bg-stone-900 text-white backdrop-blur-md transition-transform active:scale-95"
               title="點擊全螢幕放大查看照片"
             >
@@ -617,15 +632,72 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
 
                       {/* Step Instruction */}
                       <div className="flex-1 min-w-0">
-                        {step.title && (
-                          <h3
-                            className={`text-base font-bold mb-1.5 ${
-                              isStepDone ? 'line-through text-stone-400' : 'text-stone-900'
-                            }`}
-                          >
-                            {step.title}
-                          </h3>
-                        )}
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          {step.title ? (
+                            <h3
+                              className={`text-base font-bold ${
+                                isStepDone ? 'line-through text-stone-400' : 'text-stone-900'
+                              }`}
+                            >
+                              {step.title}
+                            </h3>
+                          ) : (
+                            <div></div>
+                          )}
+
+                          {/* Quick Step Photo Upload Trigger */}
+                          {onUpdateRecipe && (
+                            <div className="shrink-0 flex items-center gap-1">
+                              <label
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                                  step.image
+                                    ? 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'
+                                    : 'text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80'
+                                }`}
+                                title={step.image ? '更換此步驟照片' : '上傳此步驟照片'}
+                              >
+                                <Camera className="w-3.5 h-3.5 text-amber-600" />
+                                <span className="hidden sm:inline">
+                                  {uploadingStepIndex === idx
+                                    ? '處理中...'
+                                    : step.image
+                                    ? '更換照片'
+                                    : '加入照片'}
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  disabled={uploadingStepIndex === idx}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    try {
+                                      setUploadingStepIndex(idx);
+                                      const compressed = await ImageService.compressImageFile(file, {
+                                        maxWidth: 1280,
+                                        maxHeight: 1280,
+                                        quality: 0.82,
+                                      });
+                                      const updatedSteps = [...recipe.steps];
+                                      updatedSteps[idx] = { ...updatedSteps[idx], image: compressed };
+                                      onUpdateRecipe({
+                                        ...recipe,
+                                        steps: updatedSteps,
+                                        updatedAt: Date.now(),
+                                      });
+                                    } catch (err) {
+                                      alert(`步驟照片處理失敗：${err instanceof Error ? err.message : '請重試'}`);
+                                    } finally {
+                                      setUploadingStepIndex(null);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          )}
+                        </div>
+
                         <p
                           className={`text-sm leading-relaxed ${
                             isStepDone ? 'text-stone-400 line-through' : 'text-stone-700'
@@ -633,6 +705,36 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
                         >
                           {step.instruction}
                         </p>
+
+                        {/* Step Photo Display */}
+                        {step.image && (
+                          <div className="mt-3.5">
+                            <div
+                              onClick={() =>
+                                setLightboxImage({
+                                  url: step.image!,
+                                  title: `${recipe.title} - 步驟 ${idx + 1}${
+                                    step.title ? `：${step.title}` : ''
+                                  }`,
+                                })
+                              }
+                              className="relative inline-block rounded-2xl overflow-hidden border border-stone-200 bg-stone-100 shadow-xs cursor-pointer group max-w-sm sm:max-w-md"
+                            >
+                              <img
+                                src={step.image}
+                                alt={step.title || `步驟 ${idx + 1} 照片`}
+                                referrerPolicy="no-referrer"
+                                className="w-full max-h-64 sm:max-h-72 object-cover group-hover:scale-102 transition-transform duration-300"
+                              />
+                              <div className="absolute inset-0 bg-stone-950/0 group-hover:bg-stone-950/25 transition-colors flex items-center justify-center">
+                                <span className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-xl bg-stone-900/80 text-white text-xs font-semibold backdrop-blur-xs flex items-center gap-1.5 shadow-md">
+                                  <Maximize2 className="w-3.5 h-3.5" />
+                                  <span>點擊放大照片</span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Chef Tip */}
                         {step.tip && (
@@ -696,25 +798,29 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
       </div>
 
       {/* Image Lightbox Modal */}
-      {showImageLightbox && (
+      {lightboxImage && (
         <div
           className="fixed inset-0 z-50 bg-stone-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={() => setShowImageLightbox(false)}
+          onClick={() => setLightboxImage(null)}
         >
-          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+          <div
+            className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
-              onClick={() => setShowImageLightbox(false)}
+              onClick={() => setLightboxImage(null)}
               className="absolute top-2 right-2 p-2 rounded-full bg-stone-800/80 text-white hover:bg-stone-700 transition-colors z-10"
+              title="關閉"
             >
               <X className="w-6 h-6" />
             </button>
             <img
-              src={recipe.coverImage || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1600&q=80'}
-              alt={recipe.title}
+              src={lightboxImage.url}
+              alt={lightboxImage.title}
               className="max-h-[80vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl border border-stone-800"
             />
             <p className="text-stone-300 text-sm font-semibold mt-3 text-center">
-              {recipe.title}
+              {lightboxImage.title}
             </p>
           </div>
         </div>

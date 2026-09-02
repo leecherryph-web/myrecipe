@@ -86,6 +86,31 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
 
   const [validationError, setValidationError] = useState('');
 
+  // Step Image states
+  const [compressingStepIndex, setCompressingStepIndex] = useState<number | null>(null);
+  const [stepUrlInputIndex, setStepUrlInputIndex] = useState<number | null>(null);
+  const [stepUrlDraft, setStepUrlDraft] = useState('');
+
+  const processStepImageFile = async (stepIndex: number, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('請選擇圖片檔案 (JPG, PNG, WebP 等)');
+      return;
+    }
+    try {
+      setCompressingStepIndex(stepIndex);
+      const compressedDataUrl = await ImageService.compressImageFile(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+      });
+      updateStep(stepIndex, 'image', compressedDataUrl);
+    } catch (err) {
+      alert(`步驟照片處理失敗：${err instanceof Error ? err.message : '請重試'}`);
+    } finally {
+      setCompressingStepIndex(null);
+    }
+  };
+
   // Process uploaded image file with ImageService
   const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -752,6 +777,118 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
                         className="w-full px-3 py-1 text-xs bg-amber-50/50 border border-amber-200 rounded-lg text-amber-900"
                       />
                     </div>
+                  </div>
+
+                  {/* Step Image Attachment */}
+                  <div className="pt-2 border-t border-stone-200/70">
+                    {step.image ? (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-white p-2.5 rounded-xl border border-stone-200">
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden shrink-0 border border-stone-200 bg-stone-100 shadow-xs">
+                          <img
+                            src={step.image}
+                            alt={`步驟 ${idx + 1} 照片`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="flex-1 space-y-1.5 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-stone-800">📸 已加入步驟照片</span>
+                          </div>
+                          <p className="text-[11px] text-stone-400">
+                            料理模式與食譜詳情中將同步展示這張步驟指引照片
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer transition-colors">
+                              <Camera className="w-3.5 h-3.5 text-stone-500" />
+                              <span>{compressingStepIndex === idx ? '處理中...' : '更換照片'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={compressingStepIndex === idx}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) processStepImageFile(idx, file);
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => updateStep(idx, 'image', undefined)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>移除照片</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-amber-50 text-stone-700 hover:text-amber-900 border border-stone-200 hover:border-amber-300 text-xs font-semibold cursor-pointer shadow-xs transition-colors">
+                          <Camera className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{compressingStepIndex === idx ? '圖片壓縮處理中...' : '加入步驟照片'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={compressingStepIndex === idx}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) processStepImageFile(idx, file);
+                            }}
+                          />
+                        </label>
+
+                        {stepUrlInputIndex === idx ? (
+                          <div className="flex items-center gap-1.5 flex-1 min-w-[240px]">
+                            <input
+                              type="url"
+                              placeholder="貼上步驟圖片網址 (https://...)"
+                              value={stepUrlDraft}
+                              onChange={(e) => setStepUrlDraft(e.target.value)}
+                              className="flex-1 px-2.5 py-1 text-xs bg-white rounded-lg border border-stone-300 text-stone-700"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (stepUrlDraft.trim()) {
+                                  updateStep(idx, 'image', stepUrlDraft.trim());
+                                  setStepUrlDraft('');
+                                  setStepUrlInputIndex(null);
+                                }
+                              }}
+                              className="px-2.5 py-1 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-lg shadow-xs"
+                            >
+                              套用
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStepUrlDraft('');
+                                setStepUrlInputIndex(null);
+                              }}
+                              className="p-1 text-stone-400 hover:text-stone-600 rounded-md"
+                              title="取消"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStepUrlInputIndex(idx);
+                              setStepUrlDraft('');
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-stone-100/80 hover:bg-stone-200/80 text-stone-600 text-xs font-medium transition-colors"
+                          >
+                            <Link className="w-3.5 h-3.5 text-stone-400" />
+                            <span>或輸入圖片網址</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

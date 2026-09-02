@@ -69,6 +69,9 @@ export class ExportService {
 
       lines.push(`**步驟 ${idx + 1}${step.title ? `：${step.title}` : ''}**${timerLabel}`);
       lines.push(step.instruction);
+      if (step.image && (step.image.startsWith('http://') || step.image.startsWith('https://'))) {
+        lines.push(`![步驟 ${idx + 1} 照片](${step.image})`);
+      }
       if (step.tip) {
         lines.push(`*💡 小撇步: ${step.tip}*`);
       }

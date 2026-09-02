@@ -202,6 +202,18 @@ export const CookingModeModal: React.FC<CookingModeModalProps> = ({
             {currentStep?.instruction}
           </div>
 
+          {/* Step Photo in Cooking Mode */}
+          {currentStep?.image && (
+            <div className="my-3 max-w-xl mx-auto rounded-3xl overflow-hidden border border-stone-800 bg-stone-900 shadow-2xl">
+              <img
+                src={currentStep.image}
+                alt={currentStep.title || `步驟 ${currentStepIndex + 1}`}
+                referrerPolicy="no-referrer"
+                className="w-full max-h-72 sm:max-h-84 object-contain mx-auto"
+              />
+            </div>
+          )}
+
           {/* Tip Note if any */}
           {currentStep?.tip && (
             <div className="flex items-start gap-3 p-4 rounded-2xl bg-stone-900 border border-amber-500/30 text-amber-200/90 text-base leading-relaxed">
