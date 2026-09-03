@@ -37,9 +37,9 @@ export class GoogleDriveService {
   private tokenClient: unknown = null;
   private statusListeners: Array<(status: GoogleDriveStatus) => void> = [];
   
-  // Default Client ID for AI Studio OAuth or user-provided
-  // nodal-descent-436409-n4 / 494250935386
-  private clientId: string = '494250935386-s70u9u9d9u5a4t57h083818e3q229jka.apps.googleusercontent.com';
+  // Default Client ID from project configuration
+  private defaultClientId: string = '494250935386-u0lnkvfrqkf8grldg143sliumdo1kh5v.apps.googleusercontent.com';
+  private clientId: string = '494250935386-u0lnkvfrqkf8grldg143sliumdo1kh5v.apps.googleusercontent.com';
 
   private status: GoogleDriveStatus = {
     isConnected: false,
@@ -62,6 +62,11 @@ export class GoogleDriveService {
 
   private loadPersistedState() {
     try {
+      const savedClientId = localStorage.getItem('recipe_app_drive_client_id');
+      if (savedClientId && savedClientId.trim()) {
+        this.clientId = savedClientId.trim();
+      }
+
       const savedStatus = localStorage.getItem(STORAGE_KEYS.DRIVE_STATUS);
       if (savedStatus) {
         this.status = { ...this.status, ...JSON.parse(savedStatus), isSyncing: false };
@@ -74,6 +79,20 @@ export class GoogleDriveService {
       }
     } catch {
       // Ignore
+    }
+  }
+
+  public getSavedClientId(): string {
+    return localStorage.getItem('recipe_app_drive_client_id') || '';
+  }
+
+  public setSavedClientId(id: string) {
+    if (id && id.trim()) {
+      this.clientId = id.trim();
+      localStorage.setItem('recipe_app_drive_client_id', this.clientId);
+    } else {
+      this.clientId = this.defaultClientId;
+      localStorage.removeItem('recipe_app_drive_client_id');
     }
   }
 
@@ -129,8 +148,8 @@ export class GoogleDriveService {
    * Initialize and request OAuth Token from Google Identity Services
    */
   public async connect(customClientId?: string): Promise<{ success: boolean; error?: string }> {
-    if (customClientId) {
-      this.clientId = customClientId;
+    if (customClientId && customClientId.trim()) {
+      this.setSavedClientId(customClientId.trim());
     }
 
     if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
@@ -152,7 +171,11 @@ export class GoogleDriveService {
           callback: async (resp) => {
             if (resp.error) {
               this.status.isSyncing = false;
-              this.status.syncError = `授權未完成：${resp.error_description || resp.error}`;
+              let friendlyError = resp.error_description || resp.error;
+              if (resp.error === 'invalid_client' || friendlyError.includes('client')) {
+                friendlyError = 'OAuth Client ID 無效或未找到 (401 invalid_client)。請檢查下方 Google Client ID 是否輸入正確。';
+              }
+              this.status.syncError = `授權未完成：${friendlyError}`;
               this.notify();
               resolve({ success: false, error: this.status.syncError });
               return;
@@ -184,9 +207,14 @@ export class GoogleDriveService {
           },
           error_callback: (err) => {
             this.status.isSyncing = false;
-            this.status.syncError = 'Google 登入連線發生錯誤。';
+            const errStr = String(err || '');
+            let msg = 'Google 登入連線發生錯誤或視窗已關閉。';
+            if (errStr.includes('popup_closed') || errStr.includes('Popup window closed') || errStr.includes('closed')) {
+              msg = 'Google 授權視窗已被關閉。若彈窗顯示「存取權遭封鎖 / 401: invalid_client」，請確認下方已填入正確的 Google Client ID。';
+            }
+            this.status.syncError = msg;
             this.notify();
-            resolve({ success: false, error: String(err) });
+            resolve({ success: false, error: msg });
           },
         });
 

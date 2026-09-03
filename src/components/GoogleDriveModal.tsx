@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Cloud,
@@ -15,9 +15,13 @@ import {
   ShieldCheck,
   HardDrive,
   FileJson,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { GoogleDriveStatus, Recipe } from '../types';
 import { ExportService } from '../services/exportService';
+import { googleDriveService } from '../services/googleDriveService';
 
 interface GoogleDriveModalProps {
   isOpen: boolean;
@@ -44,17 +48,38 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   recipes,
   onImportRecipes,
 }) => {
-  const [customClientId, setCustomClientId] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [customClientId, setCustomClientId] = useState(() => googleDriveService.getSavedClientId());
+  const [showAdvanced, setShowAdvanced] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCustomClientId(googleDriveService.getSavedClientId());
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+
+  const handleCopyOrigin = () => {
+    if (currentOrigin && navigator.clipboard) {
+      navigator.clipboard.writeText(currentOrigin);
+      setCopiedOrigin(true);
+      setTimeout(() => setCopiedOrigin(false), 2000);
+    }
+  };
 
   const handleConnect = async () => {
     setMessage(null);
     setIsProcessing(true);
-    const res = await onConnectDrive(customClientId.trim() || undefined);
+    const idToUse = customClientId.trim();
+    if (idToUse) {
+      googleDriveService.setSavedClientId(idToUse);
+    }
+    const res = await onConnectDrive(idToUse || undefined);
     setIsProcessing(false);
     if (res.success) {
       setMessage({ type: 'success', text: '成功連接 Google Drive！已自動建立同步資料夾。' });
@@ -235,47 +260,105 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
             {/* OAuth Client ID Setup & Guidance */}
             {!driveStatus.isConnected && (
               <div className="mt-3 pt-3 border-t border-stone-200/60">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2">
                   <button
                     type="button"
                     onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="text-[11px] text-amber-800 hover:text-amber-900 font-semibold underline flex items-center gap-1"
+                    className="text-xs text-amber-800 hover:text-amber-900 font-semibold underline flex items-center gap-1"
                   >
-                    <span>{showAdvanced ? '隱藏' : '⚙️ 設定我的 Google OAuth Client ID（只需設定一次）'}</span>
+                    <span>{showAdvanced ? '收起 Google Client ID 設定' : '⚙️ 設定我的 Google OAuth Client ID（在 GitHub Pages 或自訂網域時必填）'}</span>
                   </button>
                 </div>
 
-                <div className="mt-2 p-3 bg-amber-50/80 rounded-xl border border-amber-200/70 text-[11px] text-stone-700 space-y-2">
-                  <div className="font-bold text-amber-900 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
-                    <span>如何取得自己的 Google Client ID 避免 401 錯誤：</span>
-                  </div>
-                  <ol className="list-decimal pl-4 space-y-1 text-stone-600 leading-relaxed">
-                    <li>前往 <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-amber-800 underline font-medium">Google Cloud Console 憑證頁面</a></li>
-                    <li>點擊 <strong>「建立憑證」 &gt; 「OAuth 用戶端 ID」</strong>，應用程式類型選擇 <strong>「網頁應用程式 (Web application)」</strong></li>
-                    <li>在 <strong>已授權的 JavaScript 來源 (Authorized JavaScript origins)</strong> 加入：<br/>
-                      <code className="px-1.5 py-0.5 bg-white rounded border border-amber-300 font-mono text-[10px] text-amber-900 selection:bg-amber-200">
-                        {typeof window !== 'undefined' ? window.location.origin : 'https://ais-dev-tukpwmdxtu34rxwrnkts5a-994718923189.europe-west2.run.app'}
-                      </code>
-                    </li>
-                    <li>複製產生的 Client ID 貼到下方輸入框中，點擊連接即可！</li>
-                  </ol>
+                {showAdvanced && (
+                  <div className="p-3.5 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs text-stone-700 space-y-3">
+                    <div className="font-bold text-amber-950 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>解決「401: invalid_client / OAuth client not found」步驟：</span>
+                    </div>
+                    <ol className="list-decimal pl-4 space-y-2 text-stone-700 leading-relaxed text-[11px] sm:text-xs">
+                      <li>
+                        前往{' '}
+                        <a
+                          href="https://console.cloud.google.com/apis/credentials"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-amber-800 underline font-semibold inline-flex items-center gap-0.5"
+                        >
+                          Google Cloud Console 憑證頁面 <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </li>
+                      <li>
+                        點擊 <strong>「建立憑證」 &gt; 「OAuth 用戶端 ID」</strong>，應用程式類型選擇 <strong>「網頁應用程式 (Web application)」</strong>
+                      </li>
+                      <li>
+                        在 <strong>「已授權的 JavaScript 來源 (Authorized JavaScript origins)」</strong> 點擊新增，填入您目前的網址：
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <code className="px-2 py-1 bg-white rounded-lg border border-amber-300 font-mono text-[11px] text-amber-900 font-bold selection:bg-amber-200 break-all">
+                            {currentOrigin}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={handleCopyOrigin}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-200/80 hover:bg-amber-300 text-amber-950 font-bold text-[11px] transition-colors shrink-0"
+                          >
+                            {copiedOrigin ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-700" />
+                                <span>已複製</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>複製網址</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </li>
+                      <li>
+                        點擊建立後，將產生的 <strong>Client ID</strong> 複製貼在下方輸入框，點擊「儲存並連接」即可！
+                      </li>
+                    </ol>
 
-                  <div className="pt-2">
-                    <label className="text-[11px] font-bold text-stone-800 block mb-1">
-                      您的 Google OAuth Client ID：
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customClientId}
-                        onChange={(e) => setCustomClientId(e.target.value)}
-                        placeholder="例：494250935386-xxxxxx.apps.googleusercontent.com"
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 text-xs bg-white text-stone-900 focus:outline-none focus:border-amber-500 font-mono"
-                      />
+                    <div className="pt-2 border-t border-amber-200/60">
+                      <label className="text-xs font-bold text-stone-900 block mb-1.5">
+                        您的 Google OAuth Client ID：
+                      </label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={customClientId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomClientId(val);
+                            if (val.trim()) {
+                              googleDriveService.setSavedClientId(val.trim());
+                            }
+                          }}
+                          placeholder="例如：494250935386-xxxxxx.apps.googleusercontent.com"
+                          className="flex-1 px-3.5 py-2 rounded-xl border border-stone-300 text-xs bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleConnect}
+                          disabled={isProcessing}
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-sm transition-all whitespace-nowrap disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          {isProcessing ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Cloud className="w-3.5 h-3.5" />
+                          )}
+                          <span>儲存並連接</span>
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-stone-500 mt-1">
+                        * 輸入後會自動儲存在此瀏覽器，日後打開隨時可直接同步，無須重複設定。
+                      </p>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 

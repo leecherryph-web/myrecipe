@@ -252,12 +252,16 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
+    const preservedTags = tagsArray.length > 0 ? tagsArray : (initialRecipe?.tags || []);
+    const preservedRating = initialRecipe?.rating !== undefined ? initialRecipe.rating : rating;
+    const preservedDescription = description.trim() || initialRecipe?.description || '';
+
     const newRecipe: Recipe = {
       id: initialRecipe?.id || `recipe-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       title: title.trim(),
-      description: description.trim(),
+      description: preservedDescription,
       category: finalCategory,
-      tags: tagsArray,
+      tags: preservedTags,
       servings: Math.max(1, servings),
       prepTime: Math.max(0, prepTime),
       cookTime: Math.max(0, cookTime),
@@ -267,7 +271,7 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
       steps: validSteps,
       notes: notes.trim() || undefined,
       privateNotes: privateNotes.trim() || undefined,
-      rating: rating,
+      rating: preservedRating,
       source: source.trim() || undefined,
       isFavorite: initialRecipe?.isFavorite || false,
       createdAt: initialRecipe?.createdAt || Date.now(),
