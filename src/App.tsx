@@ -72,17 +72,15 @@ export default function App() {
     return INITIAL_RECIPES;
   });
 
-  // 1b. Custom Categories list state: Merge without resetting custom user categories
+  // 1b. Custom Categories list state: Faithfully persist user customizations without forced preset merging
   const [categoriesList, setCategoriesList] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(CATEGORIES_STORAGE_KEY);
-      if (saved) {
+      if (saved !== null) {
         const userCats: string[] = JSON.parse(saved);
         if (Array.isArray(userCats) && userCats.length > 0) {
-          // Merge preset categories with user created categories
-          const mergedCats = Array.from(new Set([...PRESET_CATEGORIES, ...userCats]));
-          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(mergedCats));
-          return mergedCats;
+          // Respect user's saved categories list directly!
+          return userCats;
         }
       }
     } catch {
@@ -237,48 +235,94 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Compute all available categories (from custom list + custom from recipes)
+  // Compute all available categories (from custom list)
   const allCategories = useMemo(() => {
-    const set = new Set<string>(['全部', ...categoriesList.filter((c) => c !== '全部')]);
-    recipes.forEach((r) => {
-      if (r.category && r.category !== '全部') set.add(r.category);
-    });
-    return Array.from(set);
-  }, [categoriesList, recipes]);
+    const list = ['全部', ...categoriesList.filter((c) => c && c.trim() !== '全部')];
+    return Array.from(new Set(list.map((c) => c.trim()).filter(Boolean)));
+  }, [categoriesList]);
 
   // Category Management Handlers
   const handleUpdateCategoriesList = (newCategories: string[]) => {
-    const sanitized = Array.from(new Set(newCategories));
+    const sanitized = Array.from(new Set(newCategories.map((c) => c.trim()).filter(Boolean)));
     setCategoriesList(sanitized);
-    showToast('分類清單已更新');
+    try {
+      localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(sanitized));
+    } catch {
+      // Ignore
+    }
   };
 
   const handleRenameCategoryInRecipes = (oldName: string, newName: string) => {
-    setRecipes((prev) =>
-      prev.map((r) =>
-        r.category === oldName
-          ? { ...r, category: newName, updatedAt: Date.now() }
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim();
+
+    setRecipes((prev) => {
+      const updated = prev.map((r) =>
+        r.category?.trim() === cleanOld
+          ? { ...r, category: cleanNew, updatedAt: Date.now() }
           : r
-      )
-    );
-    if (selectedCategory === oldName) {
-      setSelectedCategory(newName);
+      );
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // Ignore
+      }
+      return updated;
+    });
+
+    setCategoriesList((prev) => {
+      const updated = prev.map((c) => (c.trim() === cleanOld ? cleanNew : c));
+      try {
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // Ignore
+      }
+      return updated;
+    });
+
+    if (selectedCategory.trim() === cleanOld) {
+      setSelectedCategory(cleanNew);
     }
-    showToast(`已將分類「${oldName}」重新命名為「${newName}」並更新相關食譜`);
+    showToast(`已將分類「${cleanOld}」重新命名為「${cleanNew}」並更新相關食譜`);
   };
 
   const handleDeleteCategoryInRecipes = (deletedCat: string, fallbackCat: string) => {
-    setRecipes((prev) =>
-      prev.map((r) =>
-        r.category === deletedCat
-          ? { ...r, category: fallbackCat, updatedAt: Date.now() }
+    const cleanDeleted = deletedCat.trim();
+    const cleanFallback = fallbackCat.trim() || '未分類';
+    const finalFallback = cleanFallback === '全部' ? '未分類' : cleanFallback;
+
+    // 1. Update all recipes having this category to the fallback category
+    setRecipes((prev) => {
+      const updated = prev.map((r) =>
+        r.category?.trim() === cleanDeleted
+          ? { ...r, category: finalFallback, updatedAt: Date.now() }
           : r
-      )
-    );
-    if (selectedCategory === deletedCat) {
-      setSelectedCategory(fallbackCat || '全部');
+      );
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // Ignore
+      }
+      return updated;
+    });
+
+    // 2. Remove the deleted category from categoriesList immediately
+    setCategoriesList((prev) => {
+      const updated = prev.filter((c) => c.trim() !== cleanDeleted);
+      try {
+        localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // Ignore
+      }
+      return updated;
+    });
+
+    // 3. Reset selectedCategory if it matches the deleted category
+    if (selectedCategory.trim() === cleanDeleted) {
+      setSelectedCategory(finalFallback !== '未分類' ? finalFallback : '全部');
     }
-    showToast(`已刪除「${deletedCat}」，現有食譜已轉移至「${fallbackCat}」`);
+
+    showToast(`已成功刪除「${cleanDeleted}」分類`);
   };
 
   // Filtered & Sorted recipes

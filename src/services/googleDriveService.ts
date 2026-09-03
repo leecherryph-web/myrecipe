@@ -152,6 +152,14 @@ export class GoogleDriveService {
       this.setSavedClientId(customClientId.trim());
     }
 
+    if (!this.clientId || !this.clientId.includes('.apps.googleusercontent.com')) {
+      const errMsg = '您輸入的 Client ID 格式不正確！Google 用戶端 ID 必定包含「.apps.googleusercontent.com」（例如：494250935386-xxxx.apps.googleusercontent.com）。您可能複製成了「用戶端密碼 (Client Secret)」或「API 金鑰」，請在 Google Cloud 複製標示為「用戶端 ID」的完整字串。';
+      this.status.isSyncing = false;
+      this.status.syncError = errMsg;
+      this.notify();
+      return { success: false, error: errMsg };
+    }
+
     if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
       return {
         success: false,

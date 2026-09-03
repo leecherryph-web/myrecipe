@@ -47,13 +47,15 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   // Filter out '全部' from manageable categories
   const editableCategories = categories.filter((c) => c !== '全部');
 
-  // Count recipes per category
+  // Count recipes per category (trimmed comparison)
   const getRecipeCount = (cat: string) => {
-    return recipes.filter((r) => r.category === cat).length;
+    const cleanCat = cat.trim();
+    return recipes.filter((r) => r.category?.trim() === cleanCat).length;
   };
 
   // Start editing
   const handleStartEdit = (cat: string) => {
+    setDeletingCat(null);
     setEditingCat(cat);
     setEditInput(cat);
     setErrorMessage(null);
@@ -74,7 +76,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       setErrorMessage('「全部」為系統保留關鍵字，無法命名為此名稱');
       return;
     }
-    if (editableCategories.includes(trimmed)) {
+    if (editableCategories.map((c) => c.trim()).includes(trimmed)) {
       setErrorMessage(`已有相同名稱的分類「${trimmed}」`);
       return;
     }
@@ -100,7 +102,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       setErrorMessage('「全部」為系統保留關鍵字，無法命名為此名稱');
       return;
     }
-    if (editableCategories.includes(trimmed)) {
+    if (editableCategories.map((c) => c.trim()).includes(trimmed)) {
       setErrorMessage(`已有相同名稱的分類「${trimmed}」`);
       return;
     }
@@ -124,31 +126,28 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
     onUpdateCategories(['全部', ...list]);
   };
 
-  // Trigger Delete confirmation
+  // Trigger Delete confirmation for a category
   const handleStartDelete = (cat: string) => {
-    const count = getRecipeCount(cat);
-    if (count > 0) {
-      setDeletingCat(cat);
-      // Pick a fallback that isn't the deleted category
-      const available = editableCategories.filter((c) => c !== cat);
-      setFallbackCat(available[0] || '家常料理');
-    } else {
-      // Delete immediately if no recipes use it
-      const updated = categories.filter((c) => c !== cat);
-      onUpdateCategories(updated);
-    }
+    setEditingCat(null);
+    setDeletingCat(cat);
+    // Pick a fallback that isn't the deleted category
+    const available = editableCategories.filter((c) => c.trim() !== cat.trim());
+    setFallbackCat(available[0] || '家常料理');
     setErrorMessage(null);
   };
 
-  // Confirm delete with fallback
-  const handleConfirmDelete = () => {
-    if (!deletingCat) return;
-
-    onDeleteCategoryInRecipes(deletingCat, fallbackCat);
-    const updated = categories.filter((c) => c !== deletingCat);
+  // Confirm delete and execute
+  const handleExecuteDelete = (catToDelete: string, targetFallback: string) => {
+    const cleanCat = catToDelete.trim();
+    const fallback = targetFallback.trim() || '未分類';
+    
+    // Always call both to safely update recipes and category list
+    onDeleteCategoryInRecipes(cleanCat, fallback);
+    const updated = categories.filter((c) => c.trim() !== cleanCat);
     onUpdateCategories(updated);
 
     setDeletingCat(null);
+    setErrorMessage(null);
   };
 
   // Reset to initial preset categories
@@ -218,73 +217,109 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             </div>
           </form>
 
-          {/* Delete Warning Prompt */}
-          {deletingCat && (
-            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-300 space-y-3 animate-in fade-in">
-              <div className="flex items-start gap-2 text-amber-900">
-                <AlertCircle className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
-                <div>
-                  <h4 className="text-xs font-bold">
-                    「{deletingCat}」分類下共有 {getRecipeCount(deletingCat)} 道食譜
-                  </h4>
-                  <p className="text-[11px] text-stone-600 mt-1">
-                    刪除此分類後，請選擇將這些現有食譜轉移至哪一個分類：
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <select
-                  value={fallbackCat}
-                  onChange={(e) => setFallbackCat(e.target.value)}
-                  className="flex-1 px-3 py-1.5 rounded-xl border border-stone-300 text-xs bg-white font-medium"
-                >
-                  {editableCategories
-                    .filter((c) => c !== deletingCat)
-                    .map((c) => (
-                      <option key={c} value={c}>
-                        轉移至：{c}
-                      </option>
-                    ))}
-                  <option value="未分類">轉移至：未分類</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => setDeletingCat(null)}
-                  className="px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-200/60 rounded-xl"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-xl shadow-xs"
-                >
-                  確定刪除並轉移
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Categories List */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs text-stone-500">
               <span className="font-bold text-stone-700">現有分類清單（共 {editableCategories.length} 個）：</span>
-              <span className="text-[11px]">點擊 ✎ 即可直接重新命名</span>
+              <span className="text-[11px]">點擊 ✎ 重新命名，點擊 🗑 刪除</span>
             </div>
 
             <div className="divide-y divide-stone-100 border border-stone-200 rounded-2xl overflow-hidden bg-stone-50/50">
               {editableCategories.map((cat, idx) => {
                 const count = getRecipeCount(cat);
                 const isEditingThis = editingCat === cat;
+                const isDeletingThis = deletingCat === cat;
 
                 return (
                   <div
                     key={cat}
-                    className="p-2.5 sm:px-3.5 sm:py-2.5 flex items-center justify-between gap-2 bg-white hover:bg-stone-50/80 transition-colors"
+                    className={`p-2.5 sm:px-3.5 sm:py-2.5 flex items-center justify-between gap-2 transition-colors ${
+                      isDeletingThis
+                        ? 'bg-amber-50/90 border-l-4 border-amber-500'
+                        : isEditingThis
+                        ? 'bg-amber-50/30'
+                        : 'bg-white hover:bg-stone-50/80'
+                    }`}
                   >
-                    {isEditingThis ? (
+                    {isDeletingThis ? (
+                      /* Inline Delete Confirmation Card */
+                      <div className="w-full space-y-2.5 py-1 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-stone-900">
+                            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>確定要刪除分類「{cat}」？</span>
+                          </div>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold shrink-0 ${
+                            count > 0 ? 'bg-amber-200 text-amber-900' : 'bg-stone-200 text-stone-700'
+                          }`}>
+                            {count > 0 ? `${count} 道食譜使用中` : '0 道食譜'}
+                          </span>
+                        </div>
+
+                        {count > 0 ? (
+                          <div className="text-xs space-y-2 bg-white/80 p-2.5 rounded-xl border border-amber-200">
+                            <p className="text-[11px] text-stone-600">
+                              刪除此分類後，請選擇將現有 <strong>{count}</strong> 道食譜轉移至哪一個分類：
+                            </p>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                              <select
+                                value={fallbackCat}
+                                onChange={(e) => setFallbackCat(e.target.value)}
+                                className="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 bg-white text-xs font-semibold text-stone-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                              >
+                                {editableCategories
+                                  .filter((c) => c.trim() !== cat.trim())
+                                  .map((c) => (
+                                    <option key={c} value={c}>
+                                      轉移至：{c}
+                                    </option>
+                                  ))}
+                                <option value="家常料理">轉移至：家常料理</option>
+                                <option value="未分類">轉移至：未分類</option>
+                              </select>
+                              <div className="flex items-center gap-2 justify-end shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingCat(null)}
+                                  className="px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-200/70 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  取消
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleExecuteDelete(cat, fallbackCat)}
+                                  className="px-3.5 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
+                                >
+                                  確認刪除並轉移
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2 pt-0.5">
+                            <p className="text-[11px] text-stone-600">
+                              此分類目前無任何食譜，點擊右側按鈕即可立即刪除。
+                            </p>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setDeletingCat(null)}
+                                className="px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-200/70 rounded-lg transition-colors cursor-pointer"
+                              >
+                                取消
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleExecuteDelete(cat, '未分類')}
+                                className="px-3.5 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
+                              >
+                                確定刪除
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : isEditingThis ? (
                       /* Editing Input */
                       <div className="flex-1 flex items-center gap-2">
                         <input

@@ -74,8 +74,16 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
 
   const handleConnect = async () => {
     setMessage(null);
-    setIsProcessing(true);
     const idToUse = customClientId.trim();
+    if (idToUse && !idToUse.includes('.apps.googleusercontent.com')) {
+      setMessage({
+        type: 'error',
+        text: '輸入的字串格式不正確！Google 用戶端 ID (Client ID) 必定以「.apps.googleusercontent.com」結尾。您剛才貼上的看起來是「用戶端密碼 (Client Secret)」或 API 金鑰，請至 Google Cloud 複製標示為「用戶端 ID」的那一欄。',
+      });
+      return;
+    }
+
+    setIsProcessing(true);
     if (idToUse) {
       googleDriveService.setSavedClientId(idToUse);
     }
@@ -322,9 +330,24 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                     </ol>
 
                     <div className="pt-2 border-t border-amber-200/60">
-                      <label className="text-xs font-bold text-stone-900 block mb-1.5">
-                        您的 Google OAuth Client ID：
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-stone-900">
+                          您的 Google OAuth Client ID：
+                        </label>
+                        {customClientId.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomClientId('');
+                              googleDriveService.setSavedClientId('');
+                              setMessage(null);
+                            }}
+                            className="text-[10px] text-stone-500 hover:text-stone-800 underline cursor-pointer"
+                          >
+                            清空輸入
+                          </button>
+                        )}
+                      </div>
                       <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           type="text"
@@ -337,13 +360,17 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                             }
                           }}
                           placeholder="例如：494250935386-xxxxxx.apps.googleusercontent.com"
-                          className="flex-1 px-3.5 py-2 rounded-xl border border-stone-300 text-xs bg-white text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 font-mono"
+                          className={`flex-1 px-3.5 py-2 rounded-xl border text-xs bg-white text-stone-900 focus:outline-none focus:ring-2 font-mono ${
+                            customClientId.trim().length > 0 && !customClientId.trim().includes('.apps.googleusercontent.com')
+                              ? 'border-rose-400 focus:ring-rose-400/20 bg-rose-50/20'
+                              : 'border-stone-300 focus:ring-amber-500/20'
+                          }`}
                         />
                         <button
                           type="button"
                           onClick={handleConnect}
                           disabled={isProcessing}
-                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-sm transition-all whitespace-nowrap disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-sm transition-all whitespace-nowrap disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           {isProcessing ? (
                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -353,6 +380,35 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                           <span>儲存並連接</span>
                         </button>
                       </div>
+
+                      {/* Real-time Validation Hint */}
+                      {customClientId.trim().length > 0 && !customClientId.trim().includes('.apps.googleusercontent.com') && (
+                        <div className="mt-2 p-2.5 bg-rose-50 rounded-xl border border-rose-200/90 text-xs text-rose-900 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-rose-700">
+                            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                            <span>格式錯誤：您貼上的不是「用戶端 ID (Client ID)」！</span>
+                          </div>
+                          <p className="text-[11px] text-rose-800 leading-relaxed pl-5">
+                            您剛貼上的字串看起來是<strong>「用戶端密碼 (Client Secret)」</strong>或「API 金鑰」。
+                            <br />
+                            Google 網頁的 <strong>Client ID</strong> 格式一定長成：
+                            <br />
+                            <code className="bg-rose-100/80 px-1.5 py-0.5 rounded font-mono text-[10px] text-rose-950 font-bold break-all inline-block my-0.5">
+                              [數字編號]-[英數字元].apps.googleusercontent.com
+                            </code>
+                            <br />
+                            請回到 Google Cloud Console，複製標題為 <strong>「用戶端 ID (Client ID)」</strong> 那一欄（結尾必須是 <code>.apps.googleusercontent.com</code>）。
+                          </p>
+                        </div>
+                      )}
+
+                      {customClientId.trim().length > 0 && customClientId.trim().includes('.apps.googleusercontent.com') && (
+                        <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1 mt-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>格式正確（有效的 Google OAuth Client ID 格式）</span>
+                        </p>
+                      )}
+
                       <p className="text-[10px] text-stone-500 mt-1">
                         * 輸入後會自動儲存在此瀏覽器，日後打開隨時可直接同步，無須重複設定。
                       </p>
