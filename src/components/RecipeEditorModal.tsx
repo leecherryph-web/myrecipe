@@ -14,7 +14,6 @@ import {
   Sparkles,
   Save,
   Check,
-  Star,
   Lock,
   Camera,
   Link,
@@ -22,7 +21,6 @@ import {
 } from 'lucide-react';
 import { Difficulty, IngredientItem, Recipe, RecipeStep } from '../types';
 import { PRESET_CATEGORIES, PRESET_IMAGES } from '../data/initialRecipes';
-import { StarRating } from './StarRating';
 import { ImageService } from '../services/imageService';
 
 interface RecipeEditorModalProps {
@@ -40,9 +38,14 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
 }) => {
   const isEditing = Boolean(initialRecipe);
 
+  const defaultCat =
+    initialRecipe?.category ||
+    categories.find((c) => c !== '全部') ||
+    '蛋糕';
+
   const [title, setTitle] = useState(initialRecipe?.title || '');
   const [description, setDescription] = useState(initialRecipe?.description || '');
-  const [category, setCategory] = useState(initialRecipe?.category || '家常料理');
+  const [category, setCategory] = useState(defaultCat);
   const [customCategory, setCustomCategory] = useState('');
   const [tagsInput, setTagsInput] = useState(initialRecipe?.tags?.join(', ') || '');
   const [servings, setServings] = useState<number>(initialRecipe?.servings || 2);
@@ -68,9 +71,9 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
     initialRecipe?.ingredients?.length
       ? initialRecipe.ingredients
       : [
-          { id: 'ing-1', name: '', amount: '', unit: '', group: '主要食材' },
-          { id: 'ing-2', name: '', amount: '', unit: '', group: '主要食材' },
-          { id: 'ing-3', name: '', amount: '', unit: '', group: '調味料' },
+          { id: 'ing-1', name: '', amount: '', unit: 'g', group: '' },
+          { id: 'ing-2', name: '', amount: '', unit: 'g', group: '' },
+          { id: 'ing-3', name: '', amount: '', unit: 'g', group: '' },
         ]
   );
 
@@ -79,8 +82,7 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
     initialRecipe?.steps?.length
       ? initialRecipe.steps
       : [
-          { id: 'step-1', stepNumber: 1, title: '準備食材', instruction: '', timerMinutes: 0 },
-          { id: 'step-2', stepNumber: 2, title: '開始烹調', instruction: '', timerMinutes: 5 },
+          { id: 'step-1', stepNumber: 1, title: '', instruction: '', timerMinutes: 0 },
         ]
   );
 
@@ -162,7 +164,7 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
   const addIngredientRow = () => {
     setIngredients([
       ...ingredients,
-      { id: `ing-${Date.now()}`, name: '', amount: '', unit: '', group: '主要食材' },
+      { id: `ing-${Date.now()}`, name: '', amount: '', unit: 'g', group: '' },
     ]);
   };
 
@@ -313,7 +315,7 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
           {/* Basic Info */}
           <div className="space-y-4">
             <h3 className="text-sm font-bold uppercase tracking-wider text-stone-400 flex items-center gap-2">
-              <span>基本資料與美味評分</span>
+              <span>基本資料</span>
               <div className="flex-1 h-px bg-stone-100"></div>
             </h3>
 
@@ -328,39 +330,6 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
                 placeholder="例如：日式照燒雞腿肉、經典台式三杯雞"
                 className="w-full px-4 py-2.5 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-bold text-stone-900"
                 required
-              />
-            </div>
-
-            {/* Star Rating Input */}
-            <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <label className="block text-xs font-bold text-amber-900 mb-0.5 flex items-center gap-1">
-                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                  美味喜好度評分 (1-5 星)
-                </label>
-                <p className="text-[11px] text-amber-700">
-                  可隨時依據試煮體驗調整星等，並支援在清單依評分篩選
-                </p>
-              </div>
-              <StarRating
-                rating={rating}
-                onChange={setRating}
-                size="lg"
-                showLabel
-                showScore
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-stone-700 mb-1">
-                料理簡介 / 風味特色
-              </label>
-              <textarea
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="簡短描述這道菜的風味特色、烹調重點或由來..."
-                className="w-full px-4 py-2 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-xs sm:text-sm text-stone-800"
               />
             </div>
 
@@ -586,20 +555,6 @@ export const RecipeEditorModal: React.FC<RecipeEditorModalProps> = ({
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Tags */}
-            <div>
-              <label className="block text-xs font-bold text-stone-700 mb-1.5">
-                標籤 (用逗號隔開)
-              </label>
-              <input
-                type="text"
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="例如：台菜, 下飯菜, 快速晚餐, 便當菜..."
-                className="w-full px-4 py-2 rounded-xl border border-stone-300 text-xs sm:text-sm text-stone-800"
-              />
             </div>
           </div>
 
