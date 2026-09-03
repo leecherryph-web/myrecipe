@@ -8,6 +8,7 @@ import {
   FileCode,
   Check,
   Share2,
+  Cloud,
 } from 'lucide-react';
 import { Recipe } from '../types';
 import { ExportService } from '../services/exportService';
@@ -18,6 +19,7 @@ interface ExportModalProps {
   currentServings?: number;
   isOpen: boolean;
   onClose: () => void;
+  onOpenDriveModal?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -26,6 +28,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   currentServings,
   isOpen,
   onClose,
+  onOpenDriveModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'markdown' | 'text' | 'json' | 'allMarkdown'>('markdown');
   const [copied, setCopied] = useState(false);
@@ -146,6 +149,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <span>全部食譜大合輯 ({allRecipes.length} 道)</span>
           </button>
         </div>
+
+        {/* Google Drive Cloud Backup Direct Link */}
+        {onOpenDriveModal && (
+          <div className="mx-6 mt-3 p-3 bg-amber-50 rounded-2xl border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2 text-xs text-amber-950 font-medium">
+              <Cloud className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>除了下載檔案，您也可以直接同步備份至 Google Drive 雲端資料夾：</span>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenDriveModal}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-xs transition-colors shrink-0"
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              <span>開啟 Google Drive 雲端同步與備份</span>
+            </button>
+          </div>
+        )}
 
         {/* Preview Area */}
         <div className="flex-1 overflow-y-auto p-6">

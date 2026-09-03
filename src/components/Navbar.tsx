@@ -109,12 +109,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               title={
                 driveStatus.isConnected
                   ? `Google Drive 已連線 (${driveStatus.userEmail || '已授權'})`
-                  : '未連線 Google Drive - 點擊登入雲端同步'
+                  : 'Google Drive 雲端同步與備份 - 點擊登入'
               }
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-xs ${
                 driveStatus.isConnected
-                  ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-700/60 hover:bg-emerald-900/60'
-                  : 'bg-stone-800 text-stone-300 border border-stone-700 hover:bg-stone-700'
+                  ? 'bg-emerald-950/80 text-emerald-200 border border-emerald-500/60 hover:bg-emerald-900'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30'
               }`}
             >
               {driveStatus.isSyncing ? (
@@ -122,14 +122,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               ) : driveStatus.isConnected ? (
                 <Cloud className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
-                <CloudOff className="w-3.5 h-3.5 text-stone-400" />
+                <Cloud className="w-3.5 h-3.5 text-amber-400" />
               )}
-              <span className="hidden sm:inline">
+              <span className="inline font-bold">
                 {driveStatus.isSyncing
                   ? '同步中...'
                   : driveStatus.isConnected
-                  ? 'Drive 同步中'
-                  : '雲端同步'}
+                  ? 'Drive 已連線'
+                  : 'Drive 雲端同步'}
               </span>
               {driveStatus.isConnected && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>

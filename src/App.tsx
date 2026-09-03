@@ -19,6 +19,7 @@ import {
   ArrowUpDown,
   Share2,
   X,
+  Cloud,
 } from 'lucide-react';
 import { Recipe, ActiveTimer, GoogleDriveStatus, ViewMode, SortOption, RatingFilter } from './types';
 import { INITIAL_RECIPES, PRESET_CATEGORIES } from './data/initialRecipes';
@@ -683,13 +684,48 @@ export default function App() {
                     </span>
                   )}
                 </h1>
-                <p className="text-xs sm:text-sm text-stone-500 mt-1">
-                  共找到 {filteredRecipes.length} 道美味食譜 • 隨時離線編輯、自動同步 Google Drive 雲端資料夾
-                </p>
+                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-stone-500 mt-1.5">
+                  <span>共找到 {filteredRecipes.length} 道美味食譜</span>
+                  <span>•</span>
+                  <span>隨時離線編輯</span>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    id="hero-drive-sync-btn"
+                    onClick={() => setIsDriveModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100/80 hover:bg-amber-200 text-amber-900 border border-amber-300 font-semibold transition-colors cursor-pointer"
+                    title="點擊開啟 Google Drive 雲端同步與備份"
+                  >
+                    <Cloud className={`w-3.5 h-3.5 ${driveStatus.isConnected ? 'text-emerald-600' : 'text-amber-700'}`} />
+                    <span>Google Drive 雲端同步與備份</span>
+                    {driveStatus.isConnected ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    ) : (
+                      <span className="text-[10px] px-1 py-0.2 bg-amber-200 text-amber-900 rounded font-bold">點此設定</span>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Quick Actions Bar */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  id="catalog-drive-sync-btn"
+                  onClick={() => setIsDriveModalOpen(true)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold shadow-xs transition-all ${
+                    driveStatus.isConnected
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900 hover:bg-emerald-100'
+                      : 'bg-amber-50 border-amber-300 text-amber-950 hover:bg-amber-100'
+                  }`}
+                  title="開啟 Google Drive 雲端同步與備份視窗"
+                >
+                  <Cloud className={`w-3.5 h-3.5 ${driveStatus.isConnected ? 'text-emerald-600' : 'text-amber-600'}`} />
+                  <span>Google Drive 雲端備份</span>
+                  {driveStatus.isConnected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  )}
+                </button>
+
                 <button
                   onClick={() => setIsImportModalOpen(true)}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-stone-200 text-stone-700 hover:bg-stone-50 text-xs font-semibold shadow-xs transition-colors"
@@ -956,6 +992,11 @@ export default function App() {
         recipe={exportRecipe}
         allRecipes={recipes}
         currentServings={exportServings}
+        onOpenDriveModal={() => {
+          setIsExportModalOpen(false);
+          setExportRecipe(null);
+          setIsDriveModalOpen(true);
+        }}
         onClose={() => {
           setIsExportModalOpen(false);
           setExportRecipe(null);
