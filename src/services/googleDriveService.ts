@@ -22,8 +22,8 @@ declare global {
 
 const STORAGE_KEYS = {
   DRIVE_STATUS: 'recipe_app_drive_status',
-  DRIVE_TOKEN: 'recipe_app_drive_token',
-  DRIVE_TOKEN_EXPIRY: 'recipe_app_drive_token_expiry',
+  DRIVE_TOKEN: 'recipe_app_drive_token_v2',
+  DRIVE_TOKEN_EXPIRY: 'recipe_app_drive_token_expiry_v2',
   PENDING_SYNC: 'recipe_app_pending_sync',
   LOCAL_RECIPES: 'recipe_app_recipes_data',
 };
@@ -71,11 +71,23 @@ export class GoogleDriveService {
       if (savedStatus) {
         this.status = { ...this.status, ...JSON.parse(savedStatus), isSyncing: false };
       }
-      const savedToken = sessionStorage.getItem(STORAGE_KEYS.DRIVE_TOKEN);
-      const savedExpiry = sessionStorage.getItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY);
+
+      // Check localStorage first, fallback to legacy sessionStorage
+      const savedToken = localStorage.getItem(STORAGE_KEYS.DRIVE_TOKEN) || sessionStorage.getItem('recipe_app_drive_token');
+      const savedExpiry = localStorage.getItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY) || sessionStorage.getItem('recipe_app_drive_token_expiry');
+
       if (savedToken && savedExpiry && Number(savedExpiry) > Date.now()) {
         this.accessToken = savedToken;
         this.tokenExpiresAt = Number(savedExpiry);
+        this.status.isConnected = true;
+      } else {
+        // Token has expired or is absent
+        this.accessToken = null;
+        this.tokenExpiresAt = 0;
+        this.status.isConnected = false;
+        if (savedToken && savedExpiry && Number(savedExpiry) <= Date.now()) {
+          this.status.syncError = 'Google Drive 連線授權已過期（Google 安全憑證時效約 1 小時），請點擊「連接 Google Drive」重新驗證。';
+        }
       }
     } catch {
       // Ignore
@@ -94,6 +106,25 @@ export class GoogleDriveService {
       this.clientId = this.defaultClientId;
       localStorage.removeItem('recipe_app_drive_client_id');
     }
+  }
+
+  public isTokenValid(): boolean {
+    return Boolean(this.accessToken && this.tokenExpiresAt > Date.now());
+  }
+
+  private handleTokenExpired(msg = 'Google Drive 連線授權已過期，請重新登入驗證') {
+    this.accessToken = null;
+    this.tokenExpiresAt = 0;
+    try {
+      localStorage.removeItem(STORAGE_KEYS.DRIVE_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY);
+    } catch {
+      // Ignore
+    }
+    this.status.isConnected = false;
+    this.status.isSyncing = false;
+    this.status.syncError = msg;
+    this.notify();
   }
 
   private saveState() {
@@ -147,7 +178,7 @@ export class GoogleDriveService {
   /**
    * Initialize and request OAuth Token from Google Identity Services
    */
-  public async connect(customClientId?: string): Promise<{ success: boolean; error?: string }> {
+  public async connect(customClientId?: string, promptOverride: string = ''): Promise<{ success: boolean; error?: string }> {
     if (customClientId && customClientId.trim()) {
       this.setSavedClientId(customClientId.trim());
     }
@@ -192,8 +223,14 @@ export class GoogleDriveService {
             if (resp.access_token) {
               this.accessToken = resp.access_token;
               this.tokenExpiresAt = Date.now() + 3500 * 1000;
-              sessionStorage.setItem(STORAGE_KEYS.DRIVE_TOKEN, this.accessToken);
-              sessionStorage.setItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY, this.tokenExpiresAt.toString());
+              
+              // Persist in localStorage so it stays active across mobile browser app switching and page refresh
+              try {
+                localStorage.setItem(STORAGE_KEYS.DRIVE_TOKEN, this.accessToken);
+                localStorage.setItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY, this.tokenExpiresAt.toString());
+              } catch {
+                // Ignore
+              }
 
               // Fetch User profile
               await this.fetchUserProfile();
@@ -218,7 +255,7 @@ export class GoogleDriveService {
             const errStr = String(err || '');
             let msg = 'Google 登入連線發生錯誤或視窗已關閉。';
             if (errStr.includes('popup_closed') || errStr.includes('Popup window closed') || errStr.includes('closed')) {
-              msg = 'Google 授權視窗已被關閉。若彈窗顯示「存取權遭封鎖 / 401: invalid_client」，請確認下方已填入正確的 Google Client ID。';
+              msg = 'Google 授權視窗已被關閉。提示：手機版 Chrome 若攔截了彈窗，請查看網址列是否出現「已封鎖彈出式視窗」圖示並選擇「永遠允許」，再按一次連線。';
             }
             this.status.syncError = msg;
             this.notify();
@@ -227,7 +264,8 @@ export class GoogleDriveService {
         });
 
         this.tokenClient = tokenClient;
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+        // If promptOverride is empty, it uses default behavior which doesn't re-prompt consent if already granted
+        tokenClient.requestAccessToken(promptOverride ? { prompt: promptOverride } : undefined);
       } catch (err) {
         this.status.isSyncing = false;
         this.status.syncError = err instanceof Error ? err.message : '連線初始化失敗';
@@ -243,8 +281,14 @@ export class GoogleDriveService {
   public disconnect() {
     this.accessToken = null;
     this.tokenExpiresAt = 0;
-    sessionStorage.removeItem(STORAGE_KEYS.DRIVE_TOKEN);
-    sessionStorage.removeItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.DRIVE_TOKEN);
+      localStorage.removeItem(STORAGE_KEYS.DRIVE_TOKEN_EXPIRY);
+      sessionStorage.removeItem('recipe_app_drive_token');
+      sessionStorage.removeItem('recipe_app_drive_token_expiry');
+    } catch {
+      // Ignore
+    }
     this.status = {
       isConnected: false,
       userEmail: null,
@@ -267,6 +311,10 @@ export class GoogleDriveService {
       const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${this.accessToken}` },
       });
+      if (res.status === 401) {
+        this.handleTokenExpired();
+        return;
+      }
       if (res.ok) {
         const profile = await res.json();
         this.status.userEmail = profile.email || null;
@@ -293,6 +341,10 @@ export class GoogleDriveService {
       );
 
       let folderId: string | null = null;
+      if (searchRes.status === 401) {
+        this.handleTokenExpired();
+        return false;
+      }
       if (searchRes.ok) {
         const searchData = await searchRes.json();
         if (searchData.files && searchData.files.length > 0) {
@@ -446,6 +498,10 @@ export class GoogleDriveService {
         this.notify();
         return { success: true };
       } else {
+        if (response.status === 401) {
+          this.handleTokenExpired('Google Drive 連線授權已過期，請點擊「連接 Google Drive」重新授權。');
+          return { success: false, error: 'Google Drive 授權已過期，請重新連接' };
+        }
         const errText = await response.text();
         this.status.isSyncing = false;
         this.status.syncError = `雲端同步失敗 (${response.status})：${errText}`;
@@ -487,6 +543,10 @@ export class GoogleDriveService {
       });
 
       if (!res.ok) {
+        if (res.status === 401) {
+          this.handleTokenExpired('Google Drive 連線授權已過期，請點擊「連接 Google Drive」重新授權。');
+          return { success: false, error: 'Google Drive 授權已過期，請重新連接' };
+        }
         const errText = await res.text();
         this.status.isSyncing = false;
         this.status.syncError = `下載備份失敗 (${res.status}): ${errText}`;

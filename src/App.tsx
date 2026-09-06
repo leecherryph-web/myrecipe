@@ -154,10 +154,33 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Check URL Hash for shared recipes on mount
+  // Check URL Hash and query params for shared recipes or Drive Client ID on mount
   useEffect(() => {
-    const handleHashChange = () => {
+    const handleHashAndParams = () => {
       const hash = window.location.hash;
+      const searchParams = new URLSearchParams(window.location.search);
+
+      // 1. Check for incoming mobile sync client ID
+      let incomingDriveClientId: string | null = null;
+      if (hash.includes('drive_client_id=')) {
+        const match = hash.match(/drive_client_id=([^&]+)/);
+        if (match && match[1]) {
+          incomingDriveClientId = decodeURIComponent(match[1]);
+        }
+      } else if (searchParams.get('drive_client_id')) {
+        incomingDriveClientId = searchParams.get('drive_client_id');
+      }
+
+      if (incomingDriveClientId && incomingDriveClientId.includes('.apps.googleusercontent.com')) {
+        googleDriveService.setSavedClientId(incomingDriveClientId);
+        showToast('✨ 已自動載入 Google Drive 金鑰！正在為您開啟雲端設定...');
+        setIsDriveModalOpen(true);
+        // Clean hash without reloading
+        window.history.replaceState(null, '', window.location.pathname + window.location.search.replace(/[?&]drive_client_id=[^&]+/, ''));
+        return;
+      }
+
+      // 2. Check for shared recipe
       if (hash.startsWith('#share=')) {
         const encoded = hash.replace('#share=', '');
         const parsed = ShareService.parsePortableRecipe(encoded);
@@ -170,9 +193,9 @@ export default function App() {
       }
     };
 
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    handleHashAndParams();
+    window.addEventListener('hashchange', handleHashAndParams);
+    return () => window.removeEventListener('hashchange', handleHashAndParams);
   }, []);
 
   // Subscribe to Google Drive service state
@@ -181,6 +204,76 @@ export default function App() {
       setDriveStatus(status);
     });
     return unsubscribe;
+  }, []);
+
+  // Safe merge cloud recipes without deleting local user recipes
+  const handleMergeCloudRecipes = (cloudRecipes: Recipe[]) => {
+    if (!cloudRecipes || !Array.isArray(cloudRecipes)) return;
+
+    setRecipes((prev) => {
+      const map = new Map<string, Recipe>();
+      // Keep existing local recipes
+      prev.forEach((r) => map.set(r.id, r));
+
+      // Merge cloud recipes: if cloud has newer or equal updatedAt, or not present locally, use cloud
+      cloudRecipes.forEach((cloudR) => {
+        const localR = map.get(cloudR.id);
+        if (!localR) {
+          map.set(cloudR.id, cloudR);
+        } else {
+          if ((cloudR.updatedAt || 0) >= (localR.updatedAt || 0)) {
+            map.set(cloudR.id, cloudR);
+          }
+        }
+      });
+
+      const merged = Array.from(map.values());
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
+      } catch {
+        // Ignore
+      }
+      return merged;
+    });
+
+    // Merge categories
+    const newCats = cloudRecipes
+      .map((r) => r.category?.trim())
+      .filter((c): c is string => Boolean(c && c !== '全部'));
+    if (newCats.length > 0) {
+      setCategoriesList((prev) => {
+        const mergedCats = Array.from(new Set([...prev, ...newCats]));
+        try {
+          localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(mergedCats));
+        } catch {
+          // Ignore
+        }
+        return mergedCats;
+      });
+    }
+  };
+
+  // Auto-pull updates when tab becomes active / focused on mobile or desktop
+  useEffect(() => {
+    const handleSyncOnActive = async () => {
+      if (document.visibilityState === 'visible' && googleDriveService.getStatus().isConnected && googleDriveService.isOnline()) {
+        try {
+          const res = await googleDriveService.restoreFromDrive();
+          if (res.success && res.recipes && res.recipes.length > 0) {
+            handleMergeCloudRecipes(res.recipes);
+          }
+        } catch {
+          // Ignore background sync errors
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleSyncOnActive);
+    window.addEventListener('focus', handleSyncOnActive);
+    return () => {
+      document.removeEventListener('visibilitychange', handleSyncOnActive);
+      window.removeEventListener('focus', handleSyncOnActive);
+    };
   }, []);
 
   // Persist recipes to localStorage and trigger auto-sync
@@ -558,7 +651,20 @@ export default function App() {
 
   // Google Drive Handlers
   const handleConnectDrive = async (clientId?: string) => {
-    return await googleDriveService.connect(clientId);
+    const res = await googleDriveService.connect(clientId);
+    if (res.success) {
+      // Automatically pull cloud recipes immediately so mobile shows desktop recipes right away!
+      const restoreRes = await googleDriveService.restoreFromDrive();
+      if (restoreRes.success && restoreRes.recipes && restoreRes.recipes.length > 0) {
+        handleMergeCloudRecipes(restoreRes.recipes);
+        showToast(`🎉 連線成功！已自動從 Google Drive 同步 ${restoreRes.recipes.length} 道食譜！`);
+      } else {
+        // First device: backup current recipes to cloud
+        await googleDriveService.syncToDrive(recipes);
+        showToast('Google Drive 已連線！已建立雲端備份。');
+      }
+    }
+    return res;
   };
 
   const handleDisconnectDrive = () => {
@@ -573,8 +679,8 @@ export default function App() {
   const handleRestoreFromDriveNow = async () => {
     const res = await googleDriveService.restoreFromDrive();
     if (res.success && res.recipes) {
-      setRecipes(res.recipes);
-      showToast(`成功從 Google Drive 還原 ${res.recipes.length} 道食譜！`);
+      handleMergeCloudRecipes(res.recipes);
+      showToast(`成功從 Google Drive 同步 ${res.recipes.length} 道食譜！`);
     }
     return res;
   };
