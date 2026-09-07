@@ -345,7 +345,7 @@ export class GoogleDriveService {
       // 1. Search for existing folder
       const query = `name = '${DRIVE_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
       const searchRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
+        `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&orderBy=modifiedTime%20desc&fields=files(id,name)`,
         { headers: { Authorization: `Bearer ${this.accessToken}` } }
       );
 
@@ -384,11 +384,11 @@ export class GoogleDriveService {
 
       this.status.folderId = folderId;
 
-      // 3. Search for existing backup file in folder
+      // 3. Search for existing backup file in folder (newest first)
       if (folderId) {
         const fileQuery = `name = '${DRIVE_BACKUP_FILENAME}' and '${folderId}' in parents and trashed = false`;
         const fileRes = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(fileQuery)}&fields=files(id,name,modifiedTime)`,
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(fileQuery)}&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)`,
           { headers: { Authorization: `Bearer ${this.accessToken}` } }
         );
         if (fileRes.ok) {
@@ -412,7 +412,7 @@ export class GoogleDriveService {
   /**
    * Sync recipes to Google Drive
    */
-  public async syncToDrive(recipes: Recipe[]): Promise<{ success: boolean; error?: string }> {
+  public async syncToDrive(recipes: Recipe[]): Promise<{ success: boolean; count?: number; error?: string }> {
     if (!this.status.isConnected || !this.accessToken) {
       // Mark as pending for offline/unauthenticated
       try {
@@ -440,13 +440,63 @@ export class GoogleDriveService {
       await this.ensureDriveFolderAndFile();
       const folderId = this.status.folderId;
 
+      // Safe merge protection: if a cloud backup exists, pre-fetch it so no recipes are ever dropped!
+      let recipesToUpload = [...recipes];
+      if (this.status.backupFileId) {
+        try {
+          const checkRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${this.status.backupFileId}?alt=media`,
+            { headers: { Authorization: `Bearer ${this.accessToken}` } }
+          );
+          if (checkRes.ok) {
+            const cloudData = await checkRes.json();
+            const cloudList: Recipe[] = Array.isArray(cloudData.recipes)
+              ? cloudData.recipes
+              : Array.isArray(cloudData)
+              ? cloudData
+              : [];
+
+            if (cloudList.length > 0) {
+              const map = new Map<string, Recipe>();
+              // Index existing cloud recipes first
+              cloudList.forEach((r) => map.set(r.id, r));
+              const titleMap = new Map<string, string>();
+              cloudList.forEach((r) => {
+                if (r.title) titleMap.set(r.title.trim().toLowerCase(), r.id);
+              });
+
+              // Overlay local recipes
+              recipesToUpload.forEach((localR) => {
+                const normTitle = (localR.title || '').trim().toLowerCase();
+                const matchedId = map.has(localR.id)
+                  ? localR.id
+                  : titleMap.get(normTitle);
+
+                if (!matchedId) {
+                  map.set(localR.id, localR);
+                } else {
+                  const cloudR = map.get(matchedId)!;
+                  if ((localR.updatedAt || 0) >= (cloudR.updatedAt || 0)) {
+                    map.set(matchedId, { ...cloudR, ...localR, id: matchedId });
+                  }
+                }
+              });
+
+              recipesToUpload = Array.from(map.values());
+            }
+          }
+        } catch (mergeErr) {
+          console.warn('Could not pre-fetch cloud recipes for safety merge:', mergeErr);
+        }
+      }
+
       const payload = {
         app: 'RecipeNotes_TW',
         version: '1.0',
         lastUpdated: new Date().toISOString(),
         device: navigator.userAgent,
-        totalCount: recipes.length,
-        recipes: recipes,
+        totalCount: recipesToUpload.length,
+        recipes: recipesToUpload,
       };
       const jsonContent = JSON.stringify(payload, null, 2);
 
@@ -505,7 +555,7 @@ export class GoogleDriveService {
         this.status.syncError = null;
         localStorage.removeItem(STORAGE_KEYS.PENDING_SYNC);
         this.notify();
-        return { success: true };
+        return { success: true, count: recipesToUpload.length };
       } else {
         if (response.status === 401) {
           this.handleTokenExpired('Google Drive 連線授權已過期，請點擊「連接 Google Drive」重新授權。');

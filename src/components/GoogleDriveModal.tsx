@@ -36,6 +36,7 @@ interface GoogleDriveModalProps {
   onDisconnectDrive: () => void;
   onSyncNow: () => Promise<{ success: boolean; error?: string }>;
   onRestoreNow: () => Promise<{ success: boolean; error?: string }>;
+  onTwoWaySync?: () => Promise<{ success: boolean; count?: number; error?: string }>;
   onToggleAutoSync: (enabled: boolean) => void;
   recipes: Recipe[];
   onImportRecipes: (recipes: Recipe[]) => void;
@@ -49,6 +50,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   onDisconnectDrive,
   onSyncNow,
   onRestoreNow,
+  onTwoWaySync,
   onToggleAutoSync,
   recipes,
   onImportRecipes,
@@ -174,15 +176,25 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
   const handleTwoWaySync = async () => {
     setMessage(null);
     setIsProcessing(true);
-    // 1. Pull down newest recipes from Drive
-    const restoreRes = await onRestoreNow();
-    // 2. Push merged state up to Drive
-    const syncRes = await onSyncNow();
-    setIsProcessing(false);
-    if (syncRes.success) {
-      setMessage({ type: 'success', text: '🎉 雙向同步完成！手機、電腦與雲端食譜已完全一致！' });
+    let res: { success: boolean; count?: number; error?: string };
+    if (onTwoWaySync) {
+      res = await onTwoWaySync();
     } else {
-      setMessage({ type: 'error', text: syncRes.error || restoreRes.error || '同步發生異常' });
+      const restoreRes = await onRestoreNow();
+      const syncRes = await onSyncNow();
+      res = {
+        success: syncRes.success,
+        error: syncRes.error || restoreRes.error,
+      };
+    }
+    setIsProcessing(false);
+    if (res.success) {
+      setMessage({
+        type: 'success',
+        text: `🎉 雙向同步完成！手機、電腦與雲端食譜已完全一致（目前共有 ${res.count ?? recipes.length} 道食譜）！`,
+      });
+    } else {
+      setMessage({ type: 'error', text: res.error || '同步發生異常' });
     }
   };
 

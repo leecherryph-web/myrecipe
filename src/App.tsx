@@ -206,35 +206,55 @@ export default function App() {
     return unsubscribe;
   }, []);
 
+  // Ref to guarantee up-to-date recipes across async callbacks and sync events
+  const recipesRef = useRef<Recipe[]>(recipes);
+  useEffect(() => {
+    recipesRef.current = recipes;
+  }, [recipes]);
+
   // Safe merge cloud recipes without deleting local user recipes
-  const handleMergeCloudRecipes = (cloudRecipes: Recipe[]) => {
-    if (!cloudRecipes || !Array.isArray(cloudRecipes)) return;
+  const handleMergeCloudRecipes = (cloudRecipes: Recipe[]): Recipe[] => {
+    if (!cloudRecipes || !Array.isArray(cloudRecipes)) return recipesRef.current;
 
-    setRecipes((prev) => {
-      const map = new Map<string, Recipe>();
-      // Keep existing local recipes
-      prev.forEach((r) => map.set(r.id, r));
+    const currentRecipes = recipesRef.current;
+    const map = new Map<string, Recipe>();
+    // Keep existing local recipes
+    currentRecipes.forEach((r) => map.set(r.id, r));
 
-      // Merge cloud recipes: if cloud has newer or equal updatedAt, or not present locally, use cloud
-      cloudRecipes.forEach((cloudR) => {
-        const localR = map.get(cloudR.id);
-        if (!localR) {
-          map.set(cloudR.id, cloudR);
-        } else {
-          if ((cloudR.updatedAt || 0) >= (localR.updatedAt || 0)) {
-            map.set(cloudR.id, cloudR);
-          }
-        }
-      });
-
-      const merged = Array.from(map.values());
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
-      } catch {
-        // Ignore
+    // Also index by normalized title to prevent duplicates with different IDs
+    const titleToIdMap = new Map<string, string>();
+    currentRecipes.forEach((r) => {
+      if (r.title) {
+        titleToIdMap.set(r.title.trim().toLowerCase(), r.id);
       }
-      return merged;
     });
+
+    cloudRecipes.forEach((cloudR) => {
+      const normalizedTitle = (cloudR.title || '').trim().toLowerCase();
+      const matchedId = map.has(cloudR.id)
+        ? cloudR.id
+        : titleToIdMap.get(normalizedTitle);
+
+      if (!matchedId) {
+        // Brand new recipe from cloud
+        map.set(cloudR.id, cloudR);
+      } else {
+        const localR = map.get(matchedId)!;
+        // Merge without losing local custom edits: if cloud is newer or equal, take cloud
+        if ((cloudR.updatedAt || 0) >= (localR.updatedAt || 0)) {
+          map.set(matchedId, { ...localR, ...cloudR, id: matchedId });
+        }
+      }
+    });
+
+    const merged = Array.from(map.values());
+    recipesRef.current = merged;
+    setRecipes(merged);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(merged));
+    } catch {
+      // Ignore
+    }
 
     // Merge categories
     const newCats = cloudRecipes
@@ -251,6 +271,8 @@ export default function App() {
         return mergedCats;
       });
     }
+
+    return merged;
   };
 
   // Auto-pull updates when tab becomes active / focused on mobile or desktop
@@ -650,18 +672,36 @@ export default function App() {
   };
 
   // Google Drive Handlers
+  const handleTwoWaySync = async (): Promise<{ success: boolean; count?: number; error?: string }> => {
+    try {
+      // 1. Fetch cloud recipes
+      const restoreRes = await googleDriveService.restoreFromDrive();
+      let combined = recipesRef.current;
+      if (restoreRes.success && restoreRes.recipes && restoreRes.recipes.length > 0) {
+        combined = handleMergeCloudRecipes(restoreRes.recipes);
+      }
+      // 2. Upload combined recipes (local + cloud) to Google Drive so everything is unified
+      const syncRes = await googleDriveService.syncToDrive(combined);
+      if (syncRes.success) {
+        showToast(`🎉 雙向同步成功！目前共有 ${combined.length} 道食譜。`);
+        return { success: true, count: combined.length };
+      } else {
+        return { success: false, error: syncRes.error };
+      }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : '雙向同步異常' };
+    }
+  };
+
   const handleConnectDrive = async (clientId?: string) => {
     const res = await googleDriveService.connect(clientId);
     if (res.success) {
-      // Automatically pull cloud recipes immediately so mobile shows desktop recipes right away!
-      const restoreRes = await googleDriveService.restoreFromDrive();
-      if (restoreRes.success && restoreRes.recipes && restoreRes.recipes.length > 0) {
-        handleMergeCloudRecipes(restoreRes.recipes);
-        showToast(`🎉 連線成功！已自動從 Google Drive 同步 ${restoreRes.recipes.length} 道食譜！`);
+      // Automatically pull, merge, and re-upload: full 2-way sync on connection!
+      const syncResult = await handleTwoWaySync();
+      if (syncResult.success) {
+        showToast(`🎉 連線成功！已雙向同步完成（共 ${syncResult.count} 道食譜）！`);
       } else {
-        // First device: backup current recipes to cloud
-        await googleDriveService.syncToDrive(recipes);
-        showToast('Google Drive 已連線！已建立雲端備份。');
+        showToast('Google Drive 已連線！');
       }
     }
     return res;
@@ -673,14 +713,16 @@ export default function App() {
   };
 
   const handleSyncToDriveNow = async () => {
-    return await googleDriveService.syncToDrive(recipes);
+    return await googleDriveService.syncToDrive(recipesRef.current);
   };
 
   const handleRestoreFromDriveNow = async () => {
     const res = await googleDriveService.restoreFromDrive();
     if (res.success && res.recipes) {
-      handleMergeCloudRecipes(res.recipes);
-      showToast(`成功從 Google Drive 同步 ${res.recipes.length} 道食譜！`);
+      const merged = handleMergeCloudRecipes(res.recipes);
+      // Immediately push back merged result so cloud also has all local recipes
+      await googleDriveService.syncToDrive(merged);
+      showToast(`成功從 Google Drive 同步！現有 ${merged.length} 道食譜。`);
     }
     return res;
   };
@@ -1131,6 +1173,7 @@ export default function App() {
         onDisconnectDrive={handleDisconnectDrive}
         onSyncNow={handleSyncToDriveNow}
         onRestoreNow={handleRestoreFromDriveNow}
+        onTwoWaySync={handleTwoWaySync}
         onToggleAutoSync={(enabled) => googleDriveService.setAutoSync(enabled)}
         recipes={recipes}
         onImportRecipes={handleImportRecipes}
