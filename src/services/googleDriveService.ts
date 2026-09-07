@@ -38,8 +38,8 @@ export class GoogleDriveService {
   private statusListeners: Array<(status: GoogleDriveStatus) => void> = [];
   
   // Default Client ID from project configuration
-  private defaultClientId: string = '494250935386-u0lnkvfrqkf8grldg143sliumdo1kh5v.apps.googleusercontent.com';
-  private clientId: string = '494250935386-u0lnkvfrqkf8grldg143sliumdo1kh5v.apps.googleusercontent.com';
+  private defaultClientId: string = '706096887580-vtshn14anutreu0g4rgiengpks0lpfmg.apps.googleusercontent.com';
+  private clientId: string = '706096887580-vtshn14anutreu0g4rgiengpks0lpfmg.apps.googleusercontent.com';
 
   private status: GoogleDriveStatus = {
     isConnected: false,
@@ -64,7 +64,16 @@ export class GoogleDriveService {
     try {
       const savedClientId = localStorage.getItem('recipe_app_drive_client_id');
       if (savedClientId && savedClientId.trim()) {
-        this.clientId = savedClientId.trim();
+        const trimmed = savedClientId.trim();
+        // If user had the old demo client ID stored, automatically migrate to the new verified client ID
+        if (trimmed === '494250935386-u0lnkvfrqkf8grldg143sliumdo1kh5v.apps.googleusercontent.com') {
+          this.clientId = this.defaultClientId;
+          localStorage.setItem('recipe_app_drive_client_id', this.defaultClientId);
+        } else {
+          this.clientId = trimmed;
+        }
+      } else {
+        this.clientId = this.defaultClientId;
       }
 
       const savedStatus = localStorage.getItem(STORAGE_KEYS.DRIVE_STATUS);

@@ -422,7 +422,7 @@ export const GoogleDriveModal: React.FC<GoogleDriveModalProps> = ({
                               googleDriveService.setSavedClientId(val.trim());
                             }
                           }}
-                          placeholder="例如：494250935386-xxxxxx.apps.googleusercontent.com"
+                          placeholder="例如：706096887580-xxxxxx.apps.googleusercontent.com"
                           className={`flex-1 px-3.5 py-2 rounded-xl border text-xs bg-white text-stone-900 focus:outline-none focus:ring-2 font-mono ${
                             customClientId.trim().length > 0 && !customClientId.trim().includes('.apps.googleusercontent.com')
                               ? 'border-rose-400 focus:ring-rose-400/20 bg-rose-50/20'
